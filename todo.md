@@ -1,5 +1,11 @@
 # Pokemon Infinibranch API Documentation
 
+## Overview
+
+we are interfacing with an external API that creates and manages game instances.
+an important rule about this service is that we can only have UP TO 16 ACTIVE INSTANCES AT ANY TIME.
+in order to create new instances, we must shut down past instances after they have been split.
+
 ## Available Endpoints
 
 ### Instance Management

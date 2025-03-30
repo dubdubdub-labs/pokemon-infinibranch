@@ -22,30 +22,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronDown } from "lucide-react";
-import { nanoid } from "nanoid";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, Play, RefreshCw } from "lucide-react";
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { format } from "timeago.js";
-
-type ValidMove =
-  | "up"
-  | "down"
-  | "left"
-  | "right"
-  | "a"
-  | "b"
-  | "start"
-  | "select";
-
-type Poketree = {
-  instanceId: string;
-  move: ValidMove;
-  validMoves: ValidMove[];
-  screenshotUrl: string;
-  children: Poketree[];
-  timestamp: string;
-};
+import { useGameStore, type Poketree, type ValidMove } from "@/lib/store";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Utility function to get all parent instances for a given instance ID
 function getInstancePath(tree: Poketree, targetId: string): Poketree[] {
@@ -63,62 +46,10 @@ function getInstancePath(tree: Poketree, targetId: string): Poketree[] {
   return [];
 }
 
-// Generate mock Poketree data with random moves and IDs
-function mockPoketree(
-  depth = 10,
-  move?: ValidMove,
-  baseTime = new Date(),
-  currentDepth = 0
-): Poketree {
-  // All possible valid moves
-  const allMoves: ValidMove[] = [
-    "up",
-    "down",
-    "left",
-    "right",
-    "a",
-    "b",
-    "start",
-    "select",
-  ];
-
-  // Generate 1-4 random valid moves
-  const numValidMoves = Math.floor(Math.random() * 4) + 1;
-  const validMoves: ValidMove[] = [];
-
-  for (let i = 0; i < numValidMoves; i++) {
-    const randomMove = allMoves[Math.floor(Math.random() * allMoves.length)];
-    if (!validMoves.includes(randomMove)) {
-      validMoves.push(randomMove);
-    }
-  }
-
-  // Random time increment between 1-5 seconds
-  const timeIncrement = Math.floor(Math.random() * 5000) + 1000;
-  const timestamp = new Date(baseTime.getTime() + timeIncrement);
-
-  // Create node
-  const node: Poketree = {
-    instanceId: nanoid(),
-    move: move || allMoves[Math.floor(Math.random() * allMoves.length)],
-    validMoves,
-    screenshotUrl: "https://example.com/screenshot.png",
-    timestamp: timestamp.toISOString(),
-    children: [],
-  };
-
-  // Add children if not at max depth
-  if (currentDepth < depth) {
-    node.children = validMoves.map((childMove) =>
-      mockPoketree(depth, childMove, timestamp, currentDepth + 1)
-    );
-  }
-
-  return node;
-}
-
 // Utility function to count all nodes in a tree
 function countNodes(tree: Poketree): number {
+  if (!tree) return 0;
+
   // Count the current node
   let count = 1;
 
@@ -130,12 +61,19 @@ function countNodes(tree: Poketree): number {
   return count;
 }
 
-// Use mockPoketree with a smaller depth for better performance
-const pokeTree: Poketree = mockPoketree(5); // Using depth of 3 to avoid too many nodes
-
 export default function Home() {
+  const {
+    tree,
+    loading,
+    error,
+    initialize,
+    resetError,
+    activeInstances,
+    maxInstances,
+  } = useGameStore();
+
   // Calculate total nodes
-  const totalNodes = countNodes(pokeTree);
+  const totalNodes = tree ? countNodes(tree) : 0;
 
   return (
     <div className="p-4 w-full font-mono">
@@ -143,9 +81,59 @@ export default function Home() {
         PokeBranch{" "}
         <span className="text-zinc-400 text-xl">({totalNodes} items)</span>
       </h1>
-      <div className="bg-secondary/50 p-4">
-        <PokeTree tree={pokeTree} />
+
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetError}
+            className="mt-2"
+          >
+            Dismiss
+          </Button>
+        </Alert>
+      )}
+
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <Button
+          onClick={initialize}
+          disabled={loading}
+          className="flex items-center gap-2"
+        >
+          {loading ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+          {tree ? "Reset Game" : "Start Game"}
+        </Button>
+
+        <div className="text-sm text-zinc-400">
+          Active Instances: {activeInstances.length} / {maxInstances}
+        </div>
       </div>
+
+      {tree ? (
+        <div className="bg-secondary/50 p-4">
+          <PokeTree tree={tree} />
+        </div>
+      ) : (
+        <div className="bg-secondary/50 p-12 flex items-center justify-center text-zinc-400 rounded-md">
+          {loading ? (
+            <div className="flex flex-col items-center gap-2">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+              <p>Initializing game...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <p>Click the Start Game button to begin exploring</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -154,14 +142,17 @@ function GameboyTimeline({ instanceId }: { instanceId: string }) {
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
   const [instances, setInstances] = useState<Poketree[]>([]);
+  const { tree } = useGameStore();
 
   useEffect(() => {
+    if (!tree) return;
+
     // Get the path from root to current instance
-    const path = getInstancePath(pokeTree, instanceId);
+    const path = getInstancePath(tree, instanceId);
     setInstances(path);
     // Set current to the last item index
     setCurrent(path.length - 1);
-  }, [instanceId]);
+  }, [instanceId, tree]);
 
   useEffect(() => {
     if (!api) return;
@@ -346,6 +337,34 @@ function GameboyTimeline({ instanceId }: { instanceId: string }) {
 
 function PokeTree({ tree, depth = 0 }: { tree: Poketree; depth?: number }) {
   const [selectedMove, setSelectedMove] = useState<ValidMove | null>(null);
+  const { executeMove, splitInstance, shutdownInstance, loading, addBranch } =
+    useGameStore();
+
+  const handleMoveClick = async (instanceId: string, move: ValidMove) => {
+    // Check if we already have a child with this move
+    const existingChild = tree.children.find((child) => child.move === move);
+
+    if (existingChild) {
+      // We already have this branch, just toggle visibility
+      setSelectedMove(selectedMove === move ? null : move);
+    } else {
+      // We need to create a new branch
+
+      // 1. Create a new instance by splitting the current one
+      const newInstance = await splitInstance(instanceId);
+
+      if (!newInstance) return;
+
+      // 2. Add the branch to our tree
+      addBranch(instanceId, newInstance, move);
+
+      // 3. Execute the move on the new instance
+      await executeMove(newInstance.instance_id, move);
+
+      // 4. Expand the UI to show the new branch
+      setSelectedMove(move);
+    }
+  };
 
   return (
     <div className="mb-8" style={{ marginLeft: `${depth * 16}px` }}>
@@ -386,8 +405,15 @@ function PokeTree({ tree, depth = 0 }: { tree: Poketree; depth?: number }) {
 
             return (
               <div key={move} className="flex flex-col">
-                <button
-                  onClick={() => setSelectedMove(isSelected ? null : move)}
+                <Button
+                  onClick={() => {
+                    if (childForMove) {
+                      setSelectedMove(isSelected ? null : move);
+                    } else {
+                      handleMoveClick(tree.instanceId, move);
+                    }
+                  }}
+                  disabled={loading}
                   className={`px-3 py-1 rounded-sm flex items-center gap-1 ${
                     childForMove
                       ? "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -395,14 +421,16 @@ function PokeTree({ tree, depth = 0 }: { tree: Poketree; depth?: number }) {
                   }`}
                 >
                   {move}
-                  {childForMove && (
+                  {loading && !childForMove && selectedMove === move ? (
+                    <RefreshCw className="h-3 w-3 ml-1 animate-spin" />
+                  ) : childForMove ? (
                     <ChevronDown
                       className={`h-3 w-3 ml-1 transition-transform ${
                         isSelected ? "rotate-180" : ""
                       }`}
                     />
-                  )}
-                </button>
+                  ) : null}
+                </Button>
 
                 {childForMove && isSelected && (
                   <div className="mt-4">
@@ -429,9 +457,9 @@ function RenderGameboy({ screenshotUrl }: { screenshotUrl: string }) {
         className="w-full"
       />
       <img
-        src={screenshotUrl}
+        src={screenshotUrl || "/placeholder-screenshot.png"}
         alt="Screenshot"
-        className="absolute top-28 left-36 w-[13.625rem] h-[12rem] rounded-[4px] bg-red-500"
+        className="absolute top-28 left-36 w-[13.625rem] h-[12rem] rounded-[4px] bg-zinc-900"
       />
     </div>
   );
