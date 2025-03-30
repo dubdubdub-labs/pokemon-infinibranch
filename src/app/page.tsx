@@ -417,7 +417,7 @@ function PokeTree({ tree, depth = 0 }: { tree: Poketree; depth?: number }) {
                   className={`px-3 py-1 rounded-sm flex items-center gap-1 ${
                     childForMove
                       ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "bg-secondary hover:bg-secondary/80"
+                      : "bg-emerald-600 text-white hover:bg-emerald-500"
                   }`}
                 >
                   {move}
