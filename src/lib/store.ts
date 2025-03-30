@@ -49,6 +49,7 @@ interface GameStore {
   activeInstances: Instance[];
   maxInstances: number;
   error: string | null;
+  yoloMode: boolean;
 
   // Actions
   initialize: () => Promise<void>;
@@ -62,6 +63,7 @@ interface GameStore {
     childInstance: Instance,
     move: ValidMove
   ) => void;
+  toggleYoloMode: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -71,6 +73,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   activeInstances: [],
   maxInstances: 16,
   error: null,
+  yoloMode: false,
+
+  toggleYoloMode: () => set((state) => ({ yoloMode: !state.yoloMode })),
 
   resetError: () => set({ error: null }),
 

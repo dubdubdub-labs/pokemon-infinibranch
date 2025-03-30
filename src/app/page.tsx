@@ -23,12 +23,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Play, RefreshCw } from "lucide-react";
+import { ChevronDown, Play, RefreshCw, Zap } from "lucide-react";
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { format } from "timeago.js";
 import { useGameStore, type Poketree, type ValidMove } from "@/lib/store";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 // Utility function to get all parent instances for a given instance ID
 function getInstancePath(tree: Poketree, targetId: string): Poketree[] {
@@ -70,6 +72,8 @@ export default function Home() {
     resetError,
     activeInstances,
     maxInstances,
+    yoloMode,
+    toggleYoloMode,
   } = useGameStore();
 
   // Calculate total nodes
@@ -98,18 +102,35 @@ export default function Home() {
       )}
 
       <div className="mb-4 flex items-center justify-between gap-4">
-        <Button
-          onClick={initialize}
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
-          {loading ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-          {tree ? "Reset Game" : "Start Game"}
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={initialize}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            {loading ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {tree ? "Reset Game" : "Start Game"}
+          </Button>
+
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="yolo-mode"
+              checked={yoloMode}
+              onCheckedChange={toggleYoloMode}
+            />
+            <Label
+              htmlFor="yolo-mode"
+              className="flex items-center gap-1 cursor-pointer"
+            >
+              <Zap className="h-4 w-4 text-yellow-500" />
+              <span>YOLO Mode</span>
+            </Label>
+          </div>
+        </div>
 
         <div className="text-sm text-zinc-400">
           Active Instances: {activeInstances.length} / {maxInstances}
@@ -337,8 +358,67 @@ function GameboyTimeline({ instanceId }: { instanceId: string }) {
 
 function PokeTree({ tree, depth = 0 }: { tree: Poketree; depth?: number }) {
   const [selectedMove, setSelectedMove] = useState<ValidMove | null>(null);
-  const { executeMove, splitInstance, shutdownInstance, loading, addBranch } =
-    useGameStore();
+  const {
+    executeMove,
+    splitInstance,
+    shutdownInstance,
+    loading,
+    addBranch,
+    yoloMode,
+  } = useGameStore();
+
+  // Add a ref to track if YOLO mode has been executed for this tree node
+  const yoloExecutedRef = React.useRef(false);
+
+  useEffect(() => {
+    // Only execute if YOLO mode is on and we haven't executed it for this tree node yet
+    const runYoloMode = async () => {
+      if (
+        yoloMode &&
+        !loading &&
+        tree.validMoves.length > 0 &&
+        !yoloExecutedRef.current
+      ) {
+        yoloExecutedRef.current = true;
+
+        // Filter moves that haven't been executed yet
+        const unexecutedMoves = tree.validMoves.filter(
+          (move) => !tree.children.some((child) => child.move === move)
+        );
+
+        if (unexecutedMoves.length === 0) return;
+
+        // Execute all unexecuted moves in parallel
+        const movePromises = unexecutedMoves.map(async (move) => {
+          // Create a new instance by splitting the current one
+          const newInstance = await splitInstance(tree.instanceId);
+
+          if (newInstance) {
+            // Add the branch to our tree
+            addBranch(tree.instanceId, newInstance, move);
+
+            // Execute the move on the new instance
+            await executeMove(newInstance.instance_id, move);
+
+            // We no longer automatically expand the UI - user can control this
+            // This was causing the UI navigation issues
+          }
+        });
+
+        // Wait for all moves to complete
+        await Promise.all(movePromises);
+      }
+    };
+
+    runYoloMode();
+  }, [yoloMode, loading]); // Only re-run when yolo mode or loading state changes
+
+  // Reset the ref when YOLO mode is toggled off
+  useEffect(() => {
+    if (!yoloMode) {
+      yoloExecutedRef.current = false;
+    }
+  }, [yoloMode]);
 
   const handleMoveClick = async (instanceId: string, move: ValidMove) => {
     // Check if we already have a child with this move
